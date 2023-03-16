@@ -1,0 +1,4 @@
+bcrypt
+urllib3
+Flask
+waitress
