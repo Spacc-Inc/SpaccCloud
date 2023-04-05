@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<style>
+			html, body { margin: 0px; padding: 0px; border: none; overflow-x: none; }
+			/* iframe { width: 100%; height: 100%; } */
+			.Modal { position: absolute; top: 0px; right: 0px; }
+			#BarTop, #FrameSplash, #FrameNojs, #FrameDashboard, #FrameWfm { width: 100vw; border: none; }
+			#FrameSplash { height: auto; text-align: center; }
+			#BarTop { height: 2em; }
+			#FrameNojs, #FrameDashboard, #FrameWfm { height: calc(100vh - 2em); }
+		</style>
+		<script>{{bcrypt.js}}</script>
+	</head>
+	<body onload="(function(){ FrameWfm.src = '//' + window.location.hostname + ':7580'; })()">
+		<div id="FrameSplash">
+			<h2>SpaccCloud</h2>
+			<p>{{MotdText}}</p>
+			<div id="FormLogin">
+				<input type="text" placeholder="Username"/>
+				<input type="password" placeholder="Password"/>
+				<label><input type="checkbox"/> Remember me</label>
+				<input type="button" value="Login"/>
+			</div>
+			<h3>Features</h3>
+			<p>The offerings are bountiful this year:</p>
+			<ul>
+				<li>✅ Free as in freedom, but also free of charge (note: no refunds, stop asking)</li>
+				<li>✅ Hosted on crappy unstable hardware, with no redundancy whatsoever</li>
+				<li>✅ Slow data transfers thanks to WiFi 2.4 GHz and USB 2.0 backend</li>
+				<li>✅ Encryption at rest, to protect you from HDD thieves</li>
+				<li>✅ Temporary design, since we haven't completed this yet</li>
+				<li>✅ Handcrafted and hosted by Octt at Spacc Inc.</li>
+			</ul>
+		</div>
+		<div id="FrameDashboard" hidden="true">
+			<div id="BarTop">
+				<p>{{MotdText}}</p>
+				<details>
+					<summary>|||</summary>
+					<button id="BtnSettings">Settings</button>
+					<button id="BtnLogOut">Logout</button>
+					<button id="BtnAbout">About</button>
+				</details>
+			</div>
+			<iframe id="FrameWfm"></iframe>
+		</div>
+		<div id="FrameNojs">
+			<h2>Well</h2>
+			<p>JavaScript is required to use this app.</p>
+		</div>
+		<script>
+			var Service = {{ServiceJson}};
+			var Session = {};
+
+			function SpawnModal(Content, Cancellable) {
+				Cancellable = Cancellable || true;
+				var New = document.createElement('div');
+				New.className = "Modal";
+				New.innerHTML = `
+					${Content}
+				`;
+				document.body.append(New);
+				return New;
+			};
+
+			function DoLogin(Signup) {
+				var [Username, Password, Remember] = FormLogin.querySelectorAll('input');
+				[Username, Password, Remember] = [Username.value, Password.value, Remember.checked];
+				if (Username && Password) {
+					Password = dcodeIO.bcrypt.hashSync(Password, '$2a$10$m8O.rNTwFHZmPc1QdlamSO'); // Never change salt
+					// check with the server
+					var Req = new XMLHttpRequest();
+					Req.onreadystatechange = function(){
+						if (this.readyState == 4) {
+							if (this.status == 200) {
+								//FrameSplash.hidden = true;
+								//FrameDashboard.hidden = false;
+							} else
+							if (this.status == 401) {
+								alert("Incorrect login data. Recheck it and retry.")
+							};
+						};
+					};
+					Req.open('POST', '/api', true);
+					Req.setRequestHeader('Content-Type', 'application/json');
+					Req.send(JSON.stringify({Method: (Signup ? "Signup" : "Login"), Username: Username, Password: Password}));
+				};
+			};
+			FormLogin.querySelector('input[value="Login"]').onclick = DoLogin;
+
+			function Logout() {
+				Session = {};
+				FrameDashboard.hidden = true;
+				FrameSplash.hidden = false;
+			};
+
+			FrameNojs.hidden = true;
+
+			SpawnModal(`
+			<p>
+				About SpaccCloud
+				<br/>
+				etc etc etc
+			</p>
+			`);
+
+			if (Service.Signup) {
+				FormLogin.innerHTML += `<input type="button" value="Signup"/>`;
+				FormLogin.querySelector('input[value="Signup"]').onclick = function(){ DoLogin(true); };
+			};
+		</script>
+	</body>
+<html>
