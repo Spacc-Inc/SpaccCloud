@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-import json
-import os
+import json, os
 from random import choice
 import bcrypt
 from Crypto.Cipher import AES
@@ -8,7 +7,21 @@ from flask import Flask, Response, request
 from urllib.request import urlopen, Request
 
 App = Flask(__name__)
+DbFile = 'Database.json'
 Db = {}
+DbDefault = '''
+{
+	"Conf": {
+		"Host": "0.0.0.0",
+		"Port": 8080,
+		"Debug": false
+	},
+	"Service": {
+		"Signup": false
+	},
+	"Users": {}
+}
+'''
 
 Motds = '''
 SpaccCloud is WIP :/
@@ -36,8 +49,23 @@ def Index():
 @App.route('/api/', methods=['POST'])
 def Api():
 	Data = request.get_json()
-	print(Data)
-	return Data
+	m = Data['Method']
+	if m == 'Login':
+		if Data['Username'] in Db['Users'] and bcrypt.checkpw(Data['Password'], Db['Users'][Data['Username']]):
+			return '', 200
+		else:
+			return '', 401
+	elif m == 'Signup' and Db['Service']['Signup']:
+		if not Data['Username'] in Db['Users']:
+			PwHashed = bcrypt.hashpw(Data['Password'].encode(), bcrypt.gensalt()).decode()
+			Db.update({"Users": {Data['Username']: {"Password": PwHashed}}})
+			with open(DbFile, 'w') as File:
+				json.dump(Db, File, indent='\t')
+			return '', 201
+		else:
+			return '', 409
+	else:
+		return '', 400
 
 def ApiLogin():
 	pass
@@ -68,9 +96,14 @@ if __name__ == '__main__':
 	if os.geteuid() != 0:
 		print("This service must run as root. Exiting.")
 		exit(1)
+	os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-	with open('SpaccCloudDb.json', 'r') as f:
-		Db = json.load(f)
+	with open(DbFile, 'r') as File:
+		DbLoad = json.load(File)
+	Db.update(json.loads(DbDefault))
+	Db.update(DbLoad)
+	with open(DbFile, 'w') as File:
+		json.dump(Db, File, indent='\t')
 
 	if Db['Conf']['Debug']:
 		App.run(host=Db['Conf']['Host'], port=Db['Conf']['Port'], debug=True)

@@ -12,15 +12,15 @@
 		</style>
 		<script>{{bcrypt.js}}</script>
 	</head>
-	<body onload="(function(){ FrameWfm.src = '//' + window.location.hostname + ':7580'; })()">
+	<body>
 		<div id="FrameSplash">
 			<h2>SpaccCloud</h2>
 			<p>{{MotdText}}</p>
-			<div id="FormLogin">
+			<div id="FormLogin" hidden="true">
 				<input type="text" placeholder="Username"/>
 				<input type="password" placeholder="Password"/>
 				<label><input type="checkbox"/> Remember me</label>
-				<input type="button" value="Login"/>
+				<input disabled="true" type="button" value="Login"/>
 			</div>
 			<h3>Features</h3>
 			<p>The offerings are bountiful this year:</p>
@@ -74,8 +74,8 @@
 					Req.onreadystatechange = function(){
 						if (this.readyState == 4) {
 							if (this.status == 200) {
-								//FrameSplash.hidden = true;
-								//FrameDashboard.hidden = false;
+								FrameSplash.hidden = true;
+								FrameDashboard.hidden = false;
 							} else
 							if (this.status == 401) {
 								alert("Incorrect login data. Recheck it and retry.")
@@ -87,7 +87,6 @@
 					Req.send(JSON.stringify({Method: (Signup ? "Signup" : "Login"), Username: Username, Password: Password}));
 				};
 			};
-			FormLogin.querySelector('input[value="Login"]').onclick = DoLogin;
 
 			function Logout() {
 				Session = {};
@@ -95,8 +94,8 @@
 				FrameSplash.hidden = false;
 			};
 
-			FrameNojs.hidden = true;
-
+			FrameNojs.remove();
+			FormLogin.hidden = false;
 			SpawnModal(`
 			<p>
 				About SpaccCloud
@@ -106,9 +105,26 @@
 			`);
 
 			if (Service.Signup) {
-				FormLogin.innerHTML += `<input type="button" value="Signup"/>`;
+				FormLogin.innerHTML += `<input disabled="true" type="button" value="Signup"/>`;
 				FormLogin.querySelector('input[value="Signup"]').onclick = function(){ DoLogin(true); };
 			};
+
+			window.addEventListener('load', function(){
+				FrameWfm.src = `//${window.location.hostname}:7580`;
+
+				FormLogin.querySelectorAll('input[placeholder="Username"], input[placeholder="Password"]').forEach(function(El){
+					['onchange', 'oninput', 'onpaste'].forEach(function(Prop){
+						El[Prop] = function(){
+							var [Username, Password, _] = FormLogin.querySelectorAll('input');
+							FormLogin.querySelectorAll('input[value="Login"], input[value="Signup"]').forEach(function(El){
+								El.disabled = !(Username.value && Password.value);
+							});
+						};
+					});
+				});
+
+				FormLogin.querySelector('input[value="Login"]').onclick = DoLogin;
+			});
 		</script>
 	</body>
 <html>

@@ -1,2 +1,4 @@
+*.db
 filebrowser.db
 SpaccCloudDb.json
+Database.json
