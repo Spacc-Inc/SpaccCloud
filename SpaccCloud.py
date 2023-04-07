@@ -17,7 +17,7 @@ DbDefault = '''
 		"Debug": false
 	},
 	"Service": {
-		"Signup": false
+		"Registration": false
 	},
 	"Users": {}
 }
@@ -41,6 +41,7 @@ We don't support the ANTANI protocol :(
 @App.route('/app/')
 def Index():
 	return str(open('./App.html', 'r').read()
+		).replace('{{App.js}}', open('./App.js', 'r').read()
 		).replace('{{bcrypt.js}}', open('./bcrypt.min.js', 'r').read()
 		).replace('{{MotdText}}', choice(Motds.strip().splitlines())
 		).replace('{{ServiceJson}}', json.dumps(Db['Service']))
@@ -50,22 +51,24 @@ def Index():
 def Api():
 	Data = request.get_json()
 	m = Data['Method']
-	if m == 'Login':
-		if Data['Username'] in Db['Users'] and bcrypt.checkpw(Data['Password'], Db['Users'][Data['Username']]):
-			return '', 200
+	if m == 'CreateSession':
+		if Data['Username'] in Db['Users'] and bcrypt.checkpw(Data['Password'].encode(), Db['Users'][Data['Username']]['Password'].encode()):
+			return '{}', 200
 		else:
-			return '', 401
-	elif m == 'Signup' and Db['Service']['Signup']:
+			return '{}', 401
+	if m == 'CheckSession':
+		pass
+	elif m == 'Register' and Db['Service']['Registration']:
 		if not Data['Username'] in Db['Users']:
-			PwHashed = bcrypt.hashpw(Data['Password'].encode(), bcrypt.gensalt()).decode()
+			PwHashed = bcrypt.hashpw(Data['Password'].encode(), bcrypt.gensalt(10)).decode()
 			Db.update({"Users": {Data['Username']: {"Password": PwHashed}}})
 			with open(DbFile, 'w') as File:
 				json.dump(Db, File, indent='\t')
-			return '', 201
+			return '{}', 201
 		else:
-			return '', 409
+			return '{}', 409
 	else:
-		return '', 400
+		return '{}', 400
 
 def ApiLogin():
 	pass
