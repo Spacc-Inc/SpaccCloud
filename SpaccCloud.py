@@ -7,6 +7,8 @@ from flask import Flask, Response, request
 from urllib.request import urlopen, Request
 
 App = Flask(__name__)
+Page = ''
+Session = {}
 DbFile = 'Database.json'
 Db = {}
 DbDefault = '''
@@ -40,38 +42,47 @@ We don't support the ANTANI protocol :(
 @App.route('/app')
 @App.route('/app/')
 def Index():
-	return str(open('./App.html', 'r').read()
-		).replace('{{App.js}}', open('./App.js', 'r').read()
-		).replace('{{bcrypt.js}}', open('./bcrypt.min.js', 'r').read()
+	return (Page
 		).replace('{{MotdText}}', choice(Motds.strip().splitlines())
-		).replace('{{ServiceJson}}', json.dumps(Db['Service']))
+		).replace('{{ServiceJson}}', json.dumps(Db['Service'])
+		), 200, {"Content-Type": "text/html; charset=utf-8"}
 
 @App.route('/api', methods=['POST'])
 @App.route('/api/', methods=['POST'])
 def Api():
 	Data = request.get_json()
 	m = Data['Method']
-	if m == 'CreateSession':
-		if Data['Username'] in Db['Users'] and bcrypt.checkpw(Data['Password'].encode(), Db['Users'][Data['Username']]['Password'].encode()):
-			return '{}', 200
-		else:
-			return '{}', 401
-	if m == 'CheckSession':
-		pass
-	elif m == 'Register' and Db['Service']['Registration']:
-		if not Data['Username'] in Db['Users']:
-			PwHashed = bcrypt.hashpw(Data['Password'].encode(), bcrypt.gensalt(10)).decode()
-			Db.update({"Users": {Data['Username']: {"Password": PwHashed}}})
-			with open(DbFile, 'w') as File:
-				json.dump(Db, File, indent='\t')
-			return '{}', 201
-		else:
-			return '{}', 409
-	else:
-		return '{}', 400
+	if m == 'CreateSession': return ApiCreateSession(Data)
+	elif m == 'CheckSession': return ApiCheckSession(Data)
+	elif m == 'Register' and Db['Service']['Registration']: return ApiRegister(Data)
+	else: return JsonRes(Code=400)
 
-def ApiLogin():
-	pass
+def ApiCreateSession(Data):
+	if Data['Username'] in Db['Users'] and bcrypt.checkpw(
+			Data['Password'].encode(),
+			Db['Users'][Data['Username']]['Password'].encode()):
+		return JsonRes()
+	else:
+		return JsonRes(Code=401)
+
+def ApiCheckSession(Data):
+	if Data['Token'] in Session['Tokens']:
+		return JsonRes()
+	else:
+		return JsonRes(Code=401)
+
+def ApiRegister(Data):
+	if not Data['Username'] in Db['Users']:
+		PwHashed = bcrypt.hashpw(Data['Password'].encode(), bcrypt.gensalt(10)).decode()
+		Db.update({"Users": {Data['Username']: {"Password": PwHashed}}})
+		with open(DbFile, 'w') as File:
+			json.dump(Db, File, indent='\t')
+		return JsonRes(Code=201)
+	else:
+		return JsonRes(Code=409)
+
+def JsonRes(Json:dict={}, Code:int=200):
+	return json.dumps(Json), Code, {"Content-Type": "application/json; charset=utf-8"}
 
 def MkCliOpts(Opts:dict):
 	Cli = ''
@@ -107,6 +118,10 @@ if __name__ == '__main__':
 	Db.update(DbLoad)
 	with open(DbFile, 'w') as File:
 		json.dump(Db, File, indent='\t')
+
+	Page = (open('./App.html', 'r').read()
+		).replace('{{App.js}}', open('./App.js', 'r').read()
+		).replace('{{bcrypt.js}}', open('./bcrypt.min.js', 'r').read())
 
 	if Db['Conf']['Debug']:
 		App.run(host=Db['Conf']['Host'], port=Db['Conf']['Port'], debug=True)
