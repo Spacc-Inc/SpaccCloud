@@ -1,8 +1,6 @@
-var LoginDuration = 7776000;
 var Service = {{ServiceJson}};
 var Session = {};
 
-// TODO: Fix this (broken inside function, wtf)
 function ReadCookie(Key) {
 	var Value;
 	document.cookie.split('; ').forEach(function(Cookie){
@@ -11,12 +9,6 @@ function ReadCookie(Key) {
 		};
 	});
 	return Value;
-	//var Cookies = document.cookie.split('; ');
-	//for (var i=0; i<Cookies.length; i++) {
-	//	if (Cookies[i].startsWith(`${Key}=`)) {
-	//		return Cookies[i].split('=')[1];
-	//	};
-	//};
 };
 
 function SpawnModal(Content, Cancellable) {
@@ -45,9 +37,9 @@ function DoLogin(Signup) {
 			if (this.readyState == 4) {
 				if (this.status == 200) {
 					Session.Token = JSON.parse(this.responseText).Token;
-					document.cookie = `Token=${Session.Token}${Remember ? '; max-age='+LoginDuration : ''}`;
+					document.cookie = `Token=${Session.Token}${Remember ? '; max-age='+Service.SessionDuration : ''}`;
 					if (Remember) {
-						document.cookie = `TokenMaxAge=${LoginDuration}; max-age=${LoginDuration}`;
+						document.cookie = `TokenMaxAge=${Service.SessionDuration}; max-age=${Service.SessionDuration}`;
 					};
 					FrameSplash.hidden = true;
 					FrameDashboard.hidden = false;

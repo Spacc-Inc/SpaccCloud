@@ -1,0 +1,7 @@
+- Store session tokens locally
+    - Need to store their hashes in memory right after generation, not they themselves
+- IP ratelimiting for failed logins / too many signups
+- CSS
+- Programmable MOTDs in addition to nonsense random ones
+- ADs through file/folder scanning
+    - First only names, then content

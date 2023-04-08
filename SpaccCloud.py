@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json, os
 from functools import reduce
+from hashlib import sha256
 from random import choice
 from secrets import token_urlsafe
 from time import time
@@ -87,10 +88,11 @@ def ApiRenewSession(Data:dict):
 		return JsonRes(Code=400)
 
 def ApiRegister(Data:dict):
-	if not Data['Username'] in Db['Users']:
+	User = Data['Username'][:32]
+	if not User in Db['Users']:
 		PwHashed = bcrypt.hashpw(Data['Password'].encode(), bcrypt.gensalt(10)).decode()
-		Db['Users'].update({Data['Username']: {"Password": PwHashed}})
-		Session['Users'][Data['Username']] += [Token]
+		Db['Users'].update({User: {"Password": PwHashed}})
+		Session['Users'][User] += [Token]
 		with open(DbFile, 'w') as File:
 			json.dump(Db, File, indent='\t')
 		return JsonRes(Code=201)
@@ -144,18 +146,30 @@ def merge(a:dict, b:dict, path=None):
 			a[key] = b[key]
 	return a
 
+def FileReadTouch(Path, Mode='r'):
+	if not os.path.exists(Path):
+		with open(Path, 'w') as File:
+			pass
+	with open(Path, Mode) as File:
+		return File.read()
+
+def TryJsonLoadS(Text):
+	return json.loads(Text) if Text else {}
+
+def JsonLoadF(Path):
+	return TryJsonLoadS(FileReadTouch(Path))
+
 if __name__ == '__main__':
 	if os.geteuid() != 0:
 		print("This service must run as root. Exiting.")
 		exit(1)
 	os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-	with open(DbFile, 'r') as File:
-		Db = merge(json.loads(DbDefault), json.load(File))
+	Db = merge(json.loads(DbDefault), JsonLoadF(DbFile))
 	#with open(DbFile, 'w') as File:
 	#	json.dump(Db, File, indent='\t')
 
-	Session = {"Tokens": {}, "Users": {}}
+	Session = merge({"Tokens": {}, "Users": {}}, JsonLoadF('Session.json'))
 	for User in Db['Users'].keys():
 		Session['Users'].update({User: []})
 
