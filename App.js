@@ -1,5 +1,23 @@
+var LoginDuration = 7776000;
 var Service = {{ServiceJson}};
 var Session = {};
+
+// TODO: Fix this (broken inside function, wtf)
+function ReadCookie(Key) {
+	var Value;
+	document.cookie.split('; ').forEach(function(Cookie){
+		if (Cookie.startsWith(`${Key}=`)) {
+			Value = Cookie.split('=')[1];
+		};
+	});
+	return Value;
+	//var Cookies = document.cookie.split('; ');
+	//for (var i=0; i<Cookies.length; i++) {
+	//	if (Cookies[i].startsWith(`${Key}=`)) {
+	//		return Cookies[i].split('=')[1];
+	//	};
+	//};
+};
 
 function SpawnModal(Content, Cancellable) {
 	Cancellable = Cancellable || true;
@@ -10,18 +28,27 @@ function SpawnModal(Content, Cancellable) {
 	return New;
 };
 
+function JsonReq(Data, Call) {
+	var Req = new XMLHttpRequest();
+	Req.onreadystatechange = Call;
+	Req.open('POST', '/api', true);
+	Req.setRequestHeader('Content-Type', 'application/json');
+	Req.send(JSON.stringify(Data));
+};
+
 function DoLogin(Signup) {
 	var [Username, Password, Remember] = FormLogin.querySelectorAll('input');
 	[Username, Password, Remember] = [Username.value, Password.value, Remember.checked];
 	if (Username && Password) {
 		Password = dcodeIO.bcrypt.hashSync(Password, '$2a$10$m8O.rNTwFHZmPc1QdlamSO'); // Never change salt
-		// check with the server
-		var Req = new XMLHttpRequest();
-		Req.onreadystatechange = function(){
-			if (Req.readyState == 4) {
-				if (Req.status == 200) {
-					// if remember, set token in LocalStorage; else, in SessionStorage
-					//JSON.parse(Req.responseText);
+		JsonReq({Method: (Signup ? "Register" : "CreateSession"), Username: Username, Password: Password}, function(){
+			if (this.readyState == 4) {
+				if (this.status == 200) {
+					Session.Token = JSON.parse(this.responseText).Token;
+					document.cookie = `Token=${Session.Token}${Remember ? '; max-age='+LoginDuration : ''}`;
+					if (Remember) {
+						document.cookie = `TokenMaxAge=${LoginDuration}; max-age=${LoginDuration}`;
+					};
 					FrameSplash.hidden = true;
 					FrameDashboard.hidden = false;
 				} else
@@ -29,10 +56,7 @@ function DoLogin(Signup) {
 					alert("Incorrect login data. Recheck it and retry.")
 				};
 			};
-		};
-		Req.open('POST', '/api', true);
-		Req.setRequestHeader('Content-Type', 'application/json');
-		Req.send(JSON.stringify({Method: (Signup ? "Register" : "CreateSession"), Username: Username, Password: Password}));
+		});
 	};
 };
 
@@ -56,6 +80,22 @@ if (Service.Registration) {
 	FormLogin.innerHTML += `<input disabled="true" type="button" value="Signup"/>`;
 	FormLogin.querySelector('input[value="Signup"]').onclick = function(){ DoLogin(true); };
 };
+
+// Try to relogin with Token if it's saved (and at the same time renew it)
+Session.Token = ReadCookie('Token');
+JsonReq({Method: "RenewSession", Token: Session.Token}, function(){
+	if (this.readyState == 4 && this.status == 200) {
+		Session.Token = JSON.parse(this.responseText).Token;
+		var MaxAge = ReadCookie('TokenMaxAge');
+		document.cookie = `Token=${Session.Token}${MaxAge ? '; max-age='+MaxAge : ''}`;
+		if (MaxAge) {
+			document.cookie = `TokenMaxAge=${MaxAge}; max-age=${MaxAge}`;
+		};
+		FrameSplash.hidden = true;
+		FrameDashboard.hidden = false;
+	};
+	// if not 200, then Token expired
+});
 
 window.addEventListener('load', function(){
 	FrameWfm.src = `//${window.location.hostname}:7580`;
