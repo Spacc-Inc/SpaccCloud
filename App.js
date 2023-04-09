@@ -33,7 +33,7 @@ function DoLogin(Signup) {
 	[Username, Password, Remember] = [Username.value, Password.value, Remember.checked];
 	if (Username && Password) {
 		Password = dcodeIO.bcrypt.hashSync(Password, '$2a$10$m8O.rNTwFHZmPc1QdlamSO'); // Never change salt
-		JsonReq({Method: (Signup ? "Register" : "CreateSession"), Username: Username, Password: Password}, function(){
+		JsonReq({Method: (Signup ? "Register" : "OpenSession"), Username: Username, Password: Password}, function(){
 			if (this.readyState == 4) {
 				if (this.status == 200) {
 					Session.Token = JSON.parse(this.responseText).Token;
@@ -60,13 +60,6 @@ function Logout() {
 
 FrameNojs.remove();
 FormLogin.hidden = false;
-SpawnModal(`
-<p>
-	About SpaccCloud
-	<br/>
-	etc etc etc
-</p>
-`);
 
 if (Service.Registration) {
 	FormLogin.innerHTML += `<input disabled="true" type="button" value="Signup"/>`;
@@ -90,7 +83,7 @@ JsonReq({Method: "RenewSession", Token: Session.Token}, function(){
 });
 
 window.addEventListener('load', function(){
-	FrameWfm.src = `//${window.location.hostname}:7580`;
+	FrameWfm.src = '//spacccloud-wfm.octt.eu.org';
 
 	FormLogin.querySelectorAll('input[placeholder="Username"], input[placeholder="Password"]').forEach(function(El){
 		['onchange', 'oninput', 'onpaste'].forEach(function(Prop){

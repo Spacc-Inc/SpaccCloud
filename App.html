@@ -4,13 +4,19 @@
 		<meta charset="utf-8"/>
 		<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 		<style>
-			html, body { margin: 0px; padding: 0px; border: none; overflow-x: none; }
+			* { box-sizing: border-box; }
+			html, body { margin: 0; padding: 0; border: none; overflow: hidden; }
 			/* iframe { width: 100%; height: 100%; } */
-			.Modal { position: absolute; top: 0px; right: 0px; }
+			.Modal { position: absolute; top: 0; right: 0; }
 			#BarTop, #FrameSplash, #FrameNojs, #FrameDashboard, #FrameWfm { width: 100vw; border: none; }
 			#FrameSplash { height: auto; text-align: center; }
 			#BarTop { height: 2em; }
-			#FrameNojs, #FrameDashboard, #FrameWfm { height: calc(100vh - 2em); }
+			#BarTop > * { display: inline-block; margin: 0; }
+			#MenuTop { float: right; }
+			/* Issues with high zooms, must fix */
+			/*#FrameNojs, #FrameDashboard, #FrameWfm { height: 100vh; }*/
+			#FrameDashboard { height: 100vh; }
+			#FrameWfm { height: calc(100vh - 2em); }
 		</style>
 		<script>{{bcrypt.js}}</script>
 	</head>
@@ -38,10 +44,10 @@
 		<div id="FrameDashboard" hidden="true">
 			<div id="BarTop">
 				<p>{{MotdText}}</p>
-				<details>
+				<details id="MenuTop">
 					<summary>|||</summary>
 					<button id="BtnSettings">Settings</button>
-					<button id="BtnLogOut">Logout</button>
+					<button id="BtnLogOut" onclick="Logout();">Logout</button>
 					<button id="BtnAbout">About</button>
 				</details>
 			</div>

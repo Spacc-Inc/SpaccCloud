@@ -3,7 +3,7 @@ import json, os
 from functools import reduce
 from hashlib import sha256
 from random import choice
-from secrets import token_urlsafe
+from secrets import compare_digest, token_urlsafe
 from time import time
 import bcrypt
 from Crypto.Cipher import AES
@@ -11,7 +11,7 @@ from flask import Flask, Response, request
 from urllib.request import urlopen, Request
 
 App = Flask(__name__)
-Page = ''
+Spa = ''
 Session = {}
 DbFile = 'Database.json'
 Db = {}
@@ -47,8 +47,9 @@ We don't support the ANTANI protocol :(
 @App.route('/app')
 @App.route('/app/')
 def Index():
-	return (Page
-		).replace('{{App.js}}', open('./App.js', 'r').read()
+	if Db['Conf']['Debug']:
+		LoadSpa()
+	return (Spa
 		).replace('{{MotdText}}', choice(Motds.strip().splitlines())
 		).replace('{{ServiceJson}}', json.dumps(Db['Service'])
 		), 200, {"Content-Type": "text/html; charset=utf-8"}
@@ -58,29 +59,37 @@ def Index():
 def Api():
 	Data = request.get_json()
 	m = Data['Method']
-	if m == 'CreateSession': return ApiCreateSession(Data)
+	if m == 'OpenSession': return ApiOpenSession(Data)
+	elif m == 'CloseSession': return ApiCloseSession(Data)
 	elif m == 'RenewSession': return ApiRenewSession(Data)
 	elif m == 'Register' and Db['Service']['Registration']: return ApiRegister(Data)
 	else: return JsonRes(Code=400)
 
-def ApiCreateSession(Data:dict):
+def ApiOpenSession(Data:dict):
 	if Data['Username'] in Db['Users'] and bcrypt.checkpw(
 			Data['Password'].encode(),
 			Db['Users'][Data['Username']]['Password'].encode()):
-		Token = MkToken(Data['Username'])
-		Session['Tokens'].update({Token: Data['Username']})
-		Session['Users'][Data['Username']] += [Token]
+		Token = MakeToken(Data['Username'])
+		SessionStore(Token, Data['Username'])
 		return JsonRes({"Token": Token})
+	else:
+		return JsonRes(Code=401)
+
+def ApiCloseSession(Data:dict):
+	Token = HashToken(Data['Token'])
+	if Token in Session['Tokens']:
+		SessionClose(Data['Token'])
+		return JsonRes(Code=200)
 	else:
 		return JsonRes(Code=401)
 
 def ApiRenewSession(Data:dict):
 	if 'Token' in Data:
-		if Data['Token'] in Session['Tokens']:
-			User = Session['Tokens'].pop(Data['Token'])
-			NewToken = MkToken(User)
-			Session['Tokens'].update({NewToken: User})
-			Session['Users'][User] += [NewToken]
+		OldToken = HashToken(Data['Token'])
+		if OldToken in Session['Tokens']:
+			User = SessionClose(OldToken)
+			NewToken = MakeToken(User)
+			SessionStore(NewToken, User)
 			return JsonRes({"Token": NewToken})
 		else:
 			return JsonRes(Code=401)
@@ -92,7 +101,7 @@ def ApiRegister(Data:dict):
 	if not User in Db['Users']:
 		PwHashed = bcrypt.hashpw(Data['Password'].encode(), bcrypt.gensalt(10)).decode()
 		Db['Users'].update({User: {"Password": PwHashed}})
-		Session['Users'][User] += [Token]
+		#SessionStore(Token, User)
 		with open(DbFile, 'w') as File:
 			json.dump(Db, File, indent='\t')
 		return JsonRes(Code=201)
@@ -102,9 +111,29 @@ def ApiRegister(Data:dict):
 def JsonRes(Data:dict={}, Code:int=200):
 	return json.dumps(Data), Code, {"Content-Type": "application/json; charset=utf-8"}
 
-def MkToken(User=None):
+#def SessionCheck(Token:str):
+#	return compare_digest(Token, Token)
+
+def SessionStore(Token:str, User:str):
+	Session['Tokens'].update({HashToken(Token): User})
+	Session['Users'][User] += [HashToken(Token)]
+
+def SessionClose(Token:str, Rehash:bool=False):
+	if Rehash:
+		Token = HashToken(Token)
+	try:
+		User = Session['Tokens'].pop(Token)
+		Session['Users'][User].remove(Token)
+		return User
+	except Exception:
+		return None
+
+def MakeToken(User:str=None):
 	User = f'{User}-' if User else ''
-	return f'{User}{token_urlsafe(16)}-{int(time())}'
+	return f'{User}{int(time())}/{token_urlsafe(16)}'
+
+def HashToken(Token:str):
+	return f'{Token.split("/")[0]}/{sha256(Token.encode()).hexdigest()}'
 
 def MkCliOpts(Opts:dict):
 	Cli = ''
@@ -159,6 +188,12 @@ def TryJsonLoadS(Text):
 def JsonLoadF(Path):
 	return TryJsonLoadS(FileReadTouch(Path))
 
+def LoadSpa():
+	global Spa
+	Spa = (open('./App.html', 'r').read()
+		).replace('{{App.js}}', open('./App.js', 'r').read()
+		).replace('{{bcrypt.js}}', open('./bcrypt.min.js', 'r').read())
+
 if __name__ == '__main__':
 	if os.geteuid() != 0:
 		print("This service must run as root. Exiting.")
@@ -173,8 +208,7 @@ if __name__ == '__main__':
 	for User in Db['Users'].keys():
 		Session['Users'].update({User: []})
 
-	Page = (open('./App.html', 'r').read()
-		).replace('{{bcrypt.js}}', open('./bcrypt.min.js', 'r').read())
+	LoadSpa()
 
 	if Db['Conf']['Debug']:
 		App.run(host=Db['Conf']['Host'], port=Db['Conf']['Port'], debug=True)
