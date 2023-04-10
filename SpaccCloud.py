@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import json, os
-from functools import reduce
 from hashlib import sha256
 from random import choice
 from secrets import compare_digest, token_urlsafe
@@ -9,6 +8,7 @@ import bcrypt
 from Crypto.Cipher import AES
 from flask import Flask, Response, request
 from urllib.request import urlopen, Request
+from SpaccCloudIncludes.Utils import *
 
 App = Flask(__name__)
 Spa = ''
@@ -17,12 +17,14 @@ DbFile = 'Database.json'
 Db = {}
 DbDefault = '''
 {
-	"Conf": {
-		"Host": "0.0.0.0",
+	"Server": {
+		"Host": "localhost",
 		"Port": 8080,
-		"Debug": false
+		"Debug": false,
+		"WfmAdmin": "admin:admin"
 	},
 	"Service": {
+		"WfmUrl": "//${window.location.host.split('.')[0]}-wfm.${window.location.host.split('.').slice(1).join('.')}",
 		"Registration": false,
 		"SessionDuration": 7776000
 	},
@@ -47,12 +49,17 @@ We don't support the ANTANI protocol :(
 @App.route('/app')
 @App.route('/app/')
 def Index():
-	if Db['Conf']['Debug']:
+	if Db['Server']['Debug']:
 		LoadSpa()
 	return (Spa
 		).replace('{{MotdText}}', choice(Motds.strip().splitlines())
 		).replace('{{ServiceJson}}', json.dumps(Db['Service'])
 		), 200, {"Content-Type": "text/html; charset=utf-8"}
+
+@App.route('/WfmInject.js')
+def WfmInjectJs():
+	return (open('./WfmInject.js', 'r')
+		), 200, {"Content-Type": "text/javascript; charset=utf-8"}
 
 @App.route('/api', methods=['POST'])
 @App.route('/api/', methods=['POST'])
@@ -130,16 +137,11 @@ def SessionClose(Token:str, Rehash:bool=False):
 
 def MakeToken(User:str=None):
 	User = f'{User}-' if User else ''
-	return f'{User}{int(time())}/{token_urlsafe(16)}'
+	return f'{User}{int(time())}/{token_urlsafe(128)}'
 
 def HashToken(Token:str):
-	return f'{Token.split("/")[0]}/{sha256(Token.encode()).hexdigest()}'
-
-def MkCliOpts(Opts:dict):
-	Cli = ''
-	for Key in Opts:
-		Cli += f',{Key}={Opts[Key]}'
-	return Cli[1:]
+	Frags = Token.split("/")
+	return f'{Frags[0]}/{sha256(Frags[1].encode()).hexdigest()}'
 
 def CryptMount(InOpts:dict, Mount:bool=True):
 	if Mount: # As opposed to Umount
@@ -150,30 +152,12 @@ def CryptMount(InOpts:dict, Mount:bool=True):
 		}
 		Opts.update(InOpts)
 		Opts.update({"ecryptfs_fnek_sig": Opts['ecryptfs_sig']})
-		CliOpts = f'-t ecryptfs -o "{MkCliOpts(Opts)},ecryptfs_unlink_sigs"'
+		CliOpts = f'-t ecryptfs -o "{MakeStringOpts(Opts)},ecryptfs_unlink_sigs"'
 	return os.system(f'''
 	{'' if Mount else 'u'}mount \
 	{CliOpts if Mount else ''} \
 	{InOpts['Dir']+'.enc' if Mount else ''} {InOpts['Dir']}.mnt \
 	'''.strip())
-
-# Merge dict b into a | https://stackoverflow.com/a/7205107
-def merge(a:dict, b:dict, path=None):
-	if path is None: path = []
-	for key in b:
-		if key in a:
-			# Different value-key
-			if isinstance(a[key], dict) and isinstance(b[key], dict):
-				merge(a[key], b[key], path + [str(key)])
-			# Same key, same value
-			elif a[key] == b[key]:
-				pass
-			# Same key, different value
-			else:
-				a[key] = b[key]
-		else:
-			a[key] = b[key]
-	return a
 
 def FileReadTouch(Path, Mode='r'):
 	if not os.path.exists(Path):
@@ -200,18 +184,33 @@ if __name__ == '__main__':
 		exit(1)
 	os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-	Db = merge(json.loads(DbDefault), JsonLoadF(DbFile))
+	Db = DictMerge(json.loads(DbDefault), JsonLoadF(DbFile))
 	#with open(DbFile, 'w') as File:
 	#	json.dump(Db, File, indent='\t')
 
-	Session = merge({"Tokens": {}, "Users": {}}, JsonLoadF('Session.json'))
+	Session = DictMerge({"Tokens": {}, "Users": {}}, JsonLoadF('Session.json'))
 	for User in Db['Users'].keys():
 		Session['Users'].update({User: []})
 
 	LoadSpa()
 
-	if Db['Conf']['Debug']:
-		App.run(host=Db['Conf']['Host'], port=Db['Conf']['Port'], debug=True)
+	# Wfm server might still be on a dangerous admin login, change it
+	if Db['Server']['WfmAdmin'] == 'admin:admin':
+		pass # TODO: Use filemanager API (at Db['Service']['WfmUrl']) to change this
+		Login = Db['Server']['WfmAdmin']
+		User = Login.split(':')[0]
+		OldPassword = ':'.join(Login.split(':')[1:])
+		NewPassword = token_urlsafe(128)
+		# authenticate
+		# GET /api/users and find the object with username == ours, store it
+		# PUT /api/users/USERID with the saved object, set data['password'] to new password
+		# Save new password to db
+		OldDbDbFile = JsonLoadF(DbFile)
+		with open(DbFile, 'w') as File:
+			json.dump(DictMerge(OldDbDbFile, {"Server": {"WfmAdmin": f"{User}:{OldPassword}"}}), File, indent='\t')
+
+	if Db['Server']['Debug']:
+		App.run(host=Db['Server']['Host'], port=Db['Server']['Port'], debug=True)
 	else:
 		from waitress import serve
-		serve(App, host=Db['Conf']['Host'], port=Db['Conf']['Port'])
+		serve(App, host=Db['Server']['Host'], port=Db['Server']['Port'])
