@@ -1,3 +1,4 @@
+*.pyc
 *.db
 filebrowser.db
 SpaccCloudDb.json
