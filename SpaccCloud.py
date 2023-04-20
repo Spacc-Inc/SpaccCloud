@@ -21,7 +21,7 @@ DbDefault = '''
 {
 	"Server": {
 		"Host": "localhost",
-		"Port": 8080,
+		"Port": 8560,
 		"Debug": false,
 		"WfmAdmin": "admin:admin"
 	},
@@ -113,6 +113,7 @@ def ApiRegister(Data:dict):
 	if not User in Db['Users']:
 		PwHashed = bcrypt.hashpw(Data['Password'].encode(), bcrypt.gensalt(10)).decode()
 		Db['Users'].update({User: {"Password": PwHashed}})
+		Session['Users'].update({User: []})
 		WriteInDbFile({"Users": Db['Users']})
 		#SessionStore(Token, User)
 		#with open(DbFile, 'w') as File:
@@ -171,6 +172,30 @@ def ValidUsername(Name:str):
 	Match = RegexMatch("([a-z_][a-z0-9_-]{0,30})", Name)
 	return (Match[0] if Match else False)
 
+# Change password of Wfm admin if it might still be on dangerous default
+def WfmAdminReset():
+	if Db['Server']['WfmAdmin'] == 'admin:admin':
+		try:
+			Url = Db["Service"]["WfmUrl"]
+			if Url.startswith('//'):
+				Url = f'http:{Url}'
+			Login = Db['Server']['WfmAdmin']
+			Username = Login.split(':')[0]
+			OldPassword = ':'.join(Login.split(':')[1:])
+			NewPassword = token_urlsafe(128)
+			Auth = urlopen(Request(f'{Url}/api/login', data=json.dumps({"username": Username, "password": OldPassword}).encode())).read().decode()
+			Headers = {"Cookie": f"auth={Auth}", "X-Auth": Auth}
+			AdminUser = None
+			for User in json.loads(urlopen(Request(f'{Url}/api/users', headers=Headers)).read().decode()):
+				if User['username'] == Username:
+					AdminUser = User
+					break
+			AdminUser['password'] = NewPassword
+			if urlopen(Request(f'{Url}/api/users/{AdminUser["id"]}', headers=Headers, data=json.dumps({"what": "user", "which": ["all"], "data": AdminUser}).encode(), method='PUT')).code == 200:
+				WriteInDbFile({"Server": {"WfmAdmin": f"{Username}:{NewPassword}"}})
+		except Exception:
+			print(Traceback())
+
 def FileReadTouch(Path:str, Mode:str='r'):
 	if not os.path.exists(Path):
 		with open(Path, 'w') as File:
@@ -210,31 +235,7 @@ if __name__ == '__main__':
 		Session['Users'].update({User: []})
 
 	LoadSpa()
-
-	# Wfm server might still be on a dangerous admin login, change it
-	if Db['Server']['WfmAdmin'] == 'admin:admin':
-		try:
-			Url = Db["Service"]["WfmUrl"]
-			if Url.startswith('//'):
-				Url = f'http:{Url}'
-			Login = Db['Server']['WfmAdmin']
-			Username = Login.split(':')[0]
-			OldPassword = ':'.join(Login.split(':')[1:])
-			NewPassword = token_urlsafe(128)
-			#Auth = {"auth": urlopen(Request(f'{Url}/api/login', data=json.dumps({"username": Username, "password": OldPassword}).encode())).read().decode()}
-			Auth = urlopen(Request(f'{Url}/api/login', data=json.dumps({"username": Username, "password": OldPassword}).encode())).read().decode()
-			Headers = {"Cookie": f"auth={Auth}", "X-Auth": Auth}
-			# GET /api/users and find the object with username == ours, store it
-			AdminUser = None
-			for User in json.loads(urlopen(Request(f'{Url}/api/users', headers=Headers)).read().decode()):
-				if User['username'] == Username:
-					AdminUser = User
-					break
-			AdminUser['password'] = NewPassword
-			if urlopen(Request(f'{Url}/api/users/{AdminUser["id"]}', headers=Headers, data=json.dumps({"what": "user", "which": ["all"], "data": AdminUser}).encode(), method='PUT')).code == 200:
-				WriteInDbFile({"Server": {"WfmAdmin": f"{Username}:{NewPassword}"}})
-		except Exception:
-			print(Traceback())
+	WfmAdminReset()
 
 	if Db['Server']['Debug']:
 		App.run(host=Db['Server']['Host'], port=Db['Server']['Port'], debug=True)
