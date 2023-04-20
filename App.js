@@ -35,8 +35,9 @@ function DoLogin(Signup) {
 		Password = dcodeIO.bcrypt.hashSync(Password, '$2a$10$m8O.rNTwFHZmPc1QdlamSO'); // Never change salt
 		JsonReq({Method: (Signup ? "Register" : "OpenSession"), Username: Username, Password: Password}, function(){
 			if (this.readyState == 4) {
+				var Res = JSON.parse(this.responseText);
 				if (this.status == 200) {
-					Session.Token = JSON.parse(this.responseText).Token;
+					Session.Token = Res.Token;
 					document.cookie = `Token=${Session.Token}${Remember ? '; max-age='+Service.SessionDuration : ''}`;
 					if (Remember) {
 						document.cookie = `TokenMaxAge=${Service.SessionDuration}; max-age=${Service.SessionDuration}`;
@@ -45,7 +46,7 @@ function DoLogin(Signup) {
 					FrameDashboard.hidden = false;
 				} else
 				if (this.status == 401) {
-					alert("Incorrect login data. Recheck it and retry.")
+					alert(Res.Notice);
 				};
 			};
 		});

@@ -2,8 +2,10 @@
 import json, os
 from hashlib import sha256
 from random import choice
+from re import match as RegexMatch
 from secrets import compare_digest, token_urlsafe
 from time import time
+from traceback import format_exc as Traceback
 import bcrypt
 from Crypto.Cipher import AES
 from flask import Flask, Response, request
@@ -24,7 +26,7 @@ DbDefault = '''
 		"WfmAdmin": "admin:admin"
 	},
 	"Service": {
-		"WfmUrl": "//${window.location.host.split('.')[0]}-wfm.${window.location.host.split('.').slice(1).join('.')}",
+		"WfmUrl": "//127.0.0.1:7580",
 		"Registration": false,
 		"SessionDuration": 7776000
 	},
@@ -73,14 +75,15 @@ def Api():
 	else: return JsonRes(Code=400)
 
 def ApiOpenSession(Data:dict):
-	if Data['Username'] in Db['Users'] and bcrypt.checkpw(
+	User = Data['Username'][:31].lower()
+	if User in Db['Users'] and bcrypt.checkpw(
 			Data['Password'].encode(),
-			Db['Users'][Data['Username']]['Password'].encode()):
-		Token = MakeToken(Data['Username'])
-		SessionStore(Token, Data['Username'])
+			Db['Users'][User]['Password'].encode()):
+		Token = MakeToken(User)
+		SessionStore(Token, User)
 		return JsonRes({"Token": Token})
 	else:
-		return JsonRes(Code=401)
+		return JsonRes({"Notice": "Incorrect login data. Recheck it and retry."}, Code=401)
 
 def ApiCloseSession(Data:dict):
 	Token = HashToken(Data['Token'])
@@ -104,13 +107,16 @@ def ApiRenewSession(Data:dict):
 		return JsonRes(Code=400)
 
 def ApiRegister(Data:dict):
-	User = Data['Username'][:32]
+	User = Data['Username'][:31].lower()
+	if not ValidUsername(User):
+		return JsonRes({"Notice": "Invalid username. Please respect the regex ([a-z_][a-z0-9_-]0,30})."}, Code=422)
 	if not User in Db['Users']:
 		PwHashed = bcrypt.hashpw(Data['Password'].encode(), bcrypt.gensalt(10)).decode()
 		Db['Users'].update({User: {"Password": PwHashed}})
+		WriteInDbFile({"Users": Db['Users']})
 		#SessionStore(Token, User)
-		with open(DbFile, 'w') as File:
-			json.dump(Db, File, indent='\t')
+		#with open(DbFile, 'w') as File:
+		#	json.dump(DictMerge(Db), File, indent='\t')
 		return JsonRes(Code=201)
 	else:
 		return JsonRes(Code=409)
@@ -159,18 +165,29 @@ def CryptMount(InOpts:dict, Mount:bool=True):
 	{InOpts['Dir']+'.enc' if Mount else ''} {InOpts['Dir']}.mnt \
 	'''.strip())
 
-def FileReadTouch(Path, Mode='r'):
+# Check username valid by UNIX standard
+def ValidUsername(Name:str):
+	print(Name)
+	Match = RegexMatch("([a-z_][a-z0-9_-]{0,30})", Name)
+	return (Match[0] if Match else False)
+
+def FileReadTouch(Path:str, Mode:str='r'):
 	if not os.path.exists(Path):
 		with open(Path, 'w') as File:
 			pass
 	with open(Path, Mode) as File:
 		return File.read()
 
-def TryJsonLoadS(Text):
+def TryJsonLoadS(Text:str):
 	return json.loads(Text) if Text else {}
 
-def JsonLoadF(Path):
+def JsonLoadF(Path:str):
 	return TryJsonLoadS(FileReadTouch(Path))
+
+def WriteInDbFile(Dict:dict):
+	OldFileDb = JsonLoadF(DbFile)
+	with open(DbFile, 'w') as File:
+		json.dump(DictMerge(OldFileDb, Dict), File, indent='\t')
 
 def LoadSpa():
 	global Spa
@@ -196,18 +213,28 @@ if __name__ == '__main__':
 
 	# Wfm server might still be on a dangerous admin login, change it
 	if Db['Server']['WfmAdmin'] == 'admin:admin':
-		pass # TODO: Use filemanager API (at Db['Service']['WfmUrl']) to change this
-		Login = Db['Server']['WfmAdmin']
-		User = Login.split(':')[0]
-		OldPassword = ':'.join(Login.split(':')[1:])
-		NewPassword = token_urlsafe(128)
-		# authenticate
-		# GET /api/users and find the object with username == ours, store it
-		# PUT /api/users/USERID with the saved object, set data['password'] to new password
-		# Save new password to db
-		OldDbDbFile = JsonLoadF(DbFile)
-		with open(DbFile, 'w') as File:
-			json.dump(DictMerge(OldDbDbFile, {"Server": {"WfmAdmin": f"{User}:{OldPassword}"}}), File, indent='\t')
+		try:
+			Url = Db["Service"]["WfmUrl"]
+			if Url.startswith('//'):
+				Url = f'http:{Url}'
+			Login = Db['Server']['WfmAdmin']
+			Username = Login.split(':')[0]
+			OldPassword = ':'.join(Login.split(':')[1:])
+			NewPassword = token_urlsafe(128)
+			#Auth = {"auth": urlopen(Request(f'{Url}/api/login', data=json.dumps({"username": Username, "password": OldPassword}).encode())).read().decode()}
+			Auth = urlopen(Request(f'{Url}/api/login', data=json.dumps({"username": Username, "password": OldPassword}).encode())).read().decode()
+			Headers = {"Cookie": f"auth={Auth}", "X-Auth": Auth}
+			# GET /api/users and find the object with username == ours, store it
+			AdminUser = None
+			for User in json.loads(urlopen(Request(f'{Url}/api/users', headers=Headers)).read().decode()):
+				if User['username'] == Username:
+					AdminUser = User
+					break
+			AdminUser['password'] = NewPassword
+			if urlopen(Request(f'{Url}/api/users/{AdminUser["id"]}', headers=Headers, data=json.dumps({"what": "user", "which": ["all"], "data": AdminUser}).encode(), method='PUT')).code == 200:
+				WriteInDbFile({"Server": {"WfmAdmin": f"{Username}:{NewPassword}"}})
+		except Exception:
+			print(Traceback())
 
 	if Db['Server']['Debug']:
 		App.run(host=Db['Server']['Host'], port=Db['Server']['Port'], debug=True)

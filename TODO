@@ -2,8 +2,6 @@
     - Need to store their hashes in memory right after generation, not they themselves
 - IP ratelimiting for failed logins / too many signups
 - CSS
-- [Security] Try to reset Wfm admin password to a secret value at every restart (since default is dangerous)
-    - The server needs to know the Wfm URL for this
 - Programmable MOTDs in addition to nonsense random ones
 - ADs through file/folder scanning
     - First only names, then content
