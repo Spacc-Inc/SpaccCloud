@@ -3,4 +3,12 @@
 // | sub_filter '</body>' '<script src="//OUR_SERVER/WfmInject.js"></script></body>';
 // | sub_filter_once on;
 
-alert(1);
+var SpaccCloudUrl = "{{Service.Url}}".toLowerCase();
+
+window.addEventListener('message', function(Ev){
+	[SpaccCloudUrl, `http:${SpaccCloudUrl}`, `https:${SpaccCloudUrl}`].forEach(function(Url){
+		if (Ev.origin.toLowerCase() === Url) {
+			console.log(Ev.data);
+		};
+	});
+});

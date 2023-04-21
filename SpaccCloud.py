@@ -10,10 +10,11 @@ import bcrypt
 from Crypto.Cipher import AES
 from flask import Flask, Response, request
 from urllib.request import urlopen, Request
+from SpaccCloudIncludes.Files import *
 from SpaccCloudIncludes.Utils import *
 
 App = Flask(__name__)
-Spa = ''
+Spa, WfmInject = '', ''
 Session = {}
 DbFile = 'Database.json'
 Db = {}
@@ -26,6 +27,7 @@ DbDefault = '''
 		"WfmAdmin": "admin:admin"
 	},
 	"Service": {
+		"Url": "//127.0.0.1:8560",
 		"WfmUrl": "//127.0.0.1:7580",
 		"Registration": false,
 		"SessionDuration": 7776000
@@ -60,8 +62,9 @@ def Index():
 
 @App.route('/WfmInject.js')
 def WfmInjectJs():
-	return (open('./WfmInject.js', 'r')
-		), 200, {"Content-Type": "text/javascript; charset=utf-8"}
+	if Db['Server']['Debug']:
+		LoadWfmInject()
+	return WfmInject, 200, {"Content-Type": "text/javascript; charset=utf-8"}
 
 @App.route('/api', methods=['POST'])
 @App.route('/api/', methods=['POST'])
@@ -196,29 +199,17 @@ def WfmAdminReset():
 		except Exception:
 			print(Traceback())
 
-def FileReadTouch(Path:str, Mode:str='r'):
-	if not os.path.exists(Path):
-		with open(Path, 'w') as File:
-			pass
-	with open(Path, Mode) as File:
-		return File.read()
-
-def TryJsonLoadS(Text:str):
-	return json.loads(Text) if Text else {}
-
-def JsonLoadF(Path:str):
-	return TryJsonLoadS(FileReadTouch(Path))
-
-def WriteInDbFile(Dict:dict):
-	OldFileDb = JsonLoadF(DbFile)
-	with open(DbFile, 'w') as File:
-		json.dump(DictMerge(OldFileDb, Dict), File, indent='\t')
-
 def LoadSpa():
 	global Spa
 	Spa = (open('./App.html', 'r').read()
+		).replace('{{Service.WfmUrl}}', Db['Service']['WfmUrl']
 		).replace('{{App.js}}', open('./App.js', 'r').read()
 		).replace('{{bcrypt.js}}', open('./bcrypt.min.js', 'r').read())
+
+def LoadWfmInject():
+	global WfmInject
+	WfmInject = (open('./WfmInject.js', 'r').read()
+		).replace('{{Service.Url}}', Db['Service']['Url'])
 
 if __name__ == '__main__':
 	if os.geteuid() != 0:

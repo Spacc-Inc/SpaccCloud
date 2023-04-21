@@ -1,3 +1,4 @@
+import json
 from functools import reduce
 
 # Merge b into a | <https://stackoverflow.com/a/7205107>
@@ -23,3 +24,6 @@ def MakeStringOpts(Opts:dict):
 	for Key in Opts:
 		New += f',{Key}={Opts[Key]}'
 	return New[1:]
+
+def TryJsonLoadS(Text:str):
+	return json.loads(Text) if Text else {}

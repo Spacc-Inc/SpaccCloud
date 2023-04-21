@@ -1,3 +1,5 @@
+- Check current browser URL and redirect to expected one for safety
+    - First check if original URL is reachable or not (maybe proxied), otherwise don't redirect
 - Store session tokens locally
     - Need to store their hashes in memory right after generation, not they themselves
 - IP ratelimiting for failed logins / too many signups

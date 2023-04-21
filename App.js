@@ -84,8 +84,6 @@ JsonReq({Method: "RenewSession", Token: Session.Token}, function(){
 });
 
 window.addEventListener('load', function(){
-	FrameWfm.src = (Service.WfmUrl.includes('${') ? eval(`\`${Service.WfmUrl}\``) : Service.WfmUrl);
-
 	FormLogin.querySelectorAll('input[placeholder="Username"], input[placeholder="Password"]').forEach(function(El){
 		['onchange', 'oninput', 'onpaste'].forEach(function(Prop){
 			El[Prop] = function(){
