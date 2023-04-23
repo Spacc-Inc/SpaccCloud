@@ -1,5 +1,5 @@
 bcrypt
-pycrypto
+pycryptodome
 urllib3
 Flask
 waitress

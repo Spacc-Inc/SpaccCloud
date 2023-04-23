@@ -3,12 +3,17 @@
 // | sub_filter '</body>' '<script src="//OUR_SERVER/WfmInject.js"></script></body>';
 // | sub_filter_once on;
 
-var SpaccCloudUrl = "{{Service.Url}}".toLowerCase();
+var SpaccService = {{ServiceJson}};
 
 window.addEventListener('message', function(Ev){
-	[SpaccCloudUrl, `http:${SpaccCloudUrl}`, `https:${SpaccCloudUrl}`].forEach(function(Url){
-		if (Ev.origin.toLowerCase() === Url) {
+	[ SpaccService.Url,
+	  `http:${SpaccService.Url}`,
+	  `https:${SpaccService.Url}`,
+	].forEach(function(Url){
+		if (Ev.origin.toLowerCase() === Url.toLowerCase()) {
 			console.log(Ev.data);
 		};
 	});
 });
+
+{{Eruda.js}}

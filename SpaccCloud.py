@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json, os
+from base64 import b85encode, b85decode
 from hashlib import sha256
 from random import choice
 from re import match as RegexMatch
@@ -23,10 +24,10 @@ DbDefault = '''
 	"Server": {
 		"Host": "localhost",
 		"Port": 8560,
-		"Debug": false,
 		"WfmAdmin": "admin:admin"
 	},
 	"Service": {
+		"Debug": false,
 		"Url": "//127.0.0.1:8560",
 		"WfmUrl": "//127.0.0.1:7580",
 		"Registration": false,
@@ -53,7 +54,7 @@ We don't support the ANTANI protocol :(
 @App.route('/app')
 @App.route('/app/')
 def Index():
-	if Db['Server']['Debug']:
+	if Db['Service']['Debug']:
 		LoadSpa()
 	return (Spa
 		).replace('{{MotdText}}', choice(Motds.strip().splitlines())
@@ -62,9 +63,11 @@ def Index():
 
 @App.route('/WfmInject.js')
 def WfmInjectJs():
-	if Db['Server']['Debug']:
+	if Db['Service']['Debug']:
 		LoadWfmInject()
-	return WfmInject, 200, {"Content-Type": "text/javascript; charset=utf-8"}
+	return (WfmInject
+		).replace('{{ServiceJson}}', json.dumps(Db['Service'])
+		), 200, {"Content-Type": "text/javascript; charset=utf-8"}
 
 @App.route('/api', methods=['POST'])
 @App.route('/api/', methods=['POST'])
@@ -79,9 +82,13 @@ def Api():
 
 def ApiOpenSession(Data:dict):
 	User = Data['Username'][:31].lower()
+	Passwd = Data['Password']
 	if User in Db['Users'] and bcrypt.checkpw(
-			Data['Password'].encode(),
+			Passwd.encode(),
 			Db['Users'][User]['Password'].encode()):
+		KeyEnc = Db['Users'][User]['StorageKey']
+		KeyEnc = AesCrypt(KeyEnc[0], Passwd[60-32:], Nonce=KeyEnc[1], StrEnc=True)
+		print(KeyEnc)
 		Token = MakeToken(User)
 		SessionStore(Token, User)
 		return JsonRes({"Token": Token})
@@ -114,8 +121,13 @@ def ApiRegister(Data:dict):
 	if not ValidUsername(User):
 		return JsonRes({"Notice": "Invalid username. Please respect the regex ([a-z_][a-z0-9_-]0,30})."}, Code=422)
 	if not User in Db['Users']:
-		PwHashed = bcrypt.hashpw(Data['Password'].encode(), bcrypt.gensalt(10)).decode()
-		Db['Users'].update({User: {"Password": PwHashed}})
+		Passwd = Data['Password']
+		PwHashed = bcrypt.hashpw(Passwd.encode(), bcrypt.gensalt(10)).decode()
+		# TODO: Generate ecryptfs key and store itself encrypted with the user password
+		KeyEnc = AesCrypt(token_urlsafe(128), Passwd[60-32:], StrEnc=True)
+		#KeyEnc = b85encode(KeyEnc).decode()
+		#KeyEncNonce = b85encode(KeyEncNonce).decode()
+		Db['Users'].update({User: {"Password": PwHashed, "StorageKey": KeyEnc}})
 		Session['Users'].update({User: []})
 		WriteInDbFile({"Users": Db['Users']})
 		#SessionStore(Token, User)
@@ -130,6 +142,11 @@ def JsonRes(Data:dict={}, Code:int=200):
 
 #def SessionCheck(Token:str):
 #	return compare_digest(Token, Token)
+
+def WriteInDbFile(Dict:dict):
+	OldFileDb = JsonLoadF(DbFile)
+	with open(DbFile, 'w') as File:
+		json.dump(DictMerge(OldFileDb, Dict), File, indent='\t')
 
 def SessionStore(Token:str, User:str):
 	Session['Tokens'].update({HashToken(Token): User})
@@ -171,9 +188,32 @@ def CryptMount(InOpts:dict, Mount:bool=True):
 
 # Check username valid by UNIX standard
 def ValidUsername(Name:str):
-	print(Name)
 	Match = RegexMatch("([a-z_][a-z0-9_-]{0,30})", Name)
 	return (Match[0] if Match else False)
+
+def AesCrypt(Data, Key, Nonce=None, StrEnc:bool=False):
+	if type(Data) != bytes:
+		Data = Data.encode()
+	if type(Key) != bytes:
+		Key = Key.encode()
+	if Nonce and type(Nonce) != bytes:
+		Nonce = Nonce.encode()
+	if StrEnc and Nonce:
+		Data = b85decode(Data)
+		Key = b85decode(Key)
+		Nonce = b85decode(Nonce)
+	if Nonce: # Decrypt # DEVNOTE: Error here when decrypting with StrEnc
+		print(Data, Key, Nonce)
+		Crypto = AES.new(Key, AES.MODE_EAX, Nonce)
+		Data = Crypto.decrypt(Data)
+	else: # Encrypt
+		Crypto = AES.new(Key, AES.MODE_EAX)
+		Data = Crypto.encrypt(Data)
+	Nonce = Crypto.nonce
+	if StrEnc:
+		Data = b85encode(Data).decode()
+		Nonce = b85encode(Nonce).decode()
+	return Data, Nonce
 
 # Change password of Wfm admin if it might still be on dangerous default
 def WfmAdminReset():
@@ -205,11 +245,16 @@ def LoadSpa():
 		).replace('{{Service.WfmUrl}}', Db['Service']['WfmUrl']
 		).replace('{{App.js}}', open('./App.js', 'r').read()
 		).replace('{{bcrypt.js}}', open('./bcrypt.min.js', 'r').read())
+	Spa = ErudaInject(Spa)
 
 def LoadWfmInject():
 	global WfmInject
-	WfmInject = (open('./WfmInject.js', 'r').read()
-		).replace('{{Service.Url}}', Db['Service']['Url'])
+	WfmInject = open('./WfmInject.js', 'r').read()
+	WfmInject = ErudaInject(WfmInject)
+
+def ErudaInject(Base):
+	Inj = (open('./Eruda.js', 'r').read() if Db['Service']['Debug'] else '')
+	return Base.replace('{{Eruda.js}}', Inj)
 
 if __name__ == '__main__':
 	if os.geteuid() != 0:
@@ -228,7 +273,7 @@ if __name__ == '__main__':
 	LoadSpa()
 	WfmAdminReset()
 
-	if Db['Server']['Debug']:
+	if Db['Service']['Debug']:
 		App.run(host=Db['Server']['Host'], port=Db['Server']['Port'], debug=True)
 	else:
 		from waitress import serve

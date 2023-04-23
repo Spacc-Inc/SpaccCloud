@@ -10,8 +10,3 @@ def FileReadTouch(Path:str, Mode:str='r'):
 
 def JsonLoadF(Path:str):
 	return TryJsonLoadS(FileReadTouch(Path))
-
-def WriteInDbFile(Dict:dict):
-	OldFileDb = JsonLoadF(DbFile)
-	with open(DbFile, 'w') as File:
-		json.dump(DictMerge(OldFileDb, Dict), File, indent='\t')
