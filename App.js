@@ -44,8 +44,7 @@ function DoLogin(Signup) {
 					};
 					FrameSplash.hidden = true;
 					FrameDashboard.hidden = false;
-				} else
-				if (this.status == 401) {
+				} else {
 					alert(Res.Notice);
 				};
 			};
