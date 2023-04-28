@@ -1,4 +1,4 @@
-import json
+import json, subprocess
 from functools import reduce
 
 def SureType(Val, Type):
@@ -40,9 +40,15 @@ def TryJsonLoadS(Text:str):
 
 # Check username valid by UNIX standard
 def IsUsernameValid(Name:str):
-	if len(Name) > 31 or Name[0] in '0123456789':
+	if len(Name) > 31 or Name[0] in '0123456789-':
 		return False
 	for c in Name:
 		if not c in 'qwfpbjluyarstgmneiozxcdvkh0123456789-_':
 			return False
 	return Name
+
+def FormatUsername(Name:str):
+	return Name.strip()[:31].lower()
+
+def CmdRun(Cmd:str):
+	return subprocess.run(('sh', '-c', Cmd), stdout=subprocess.PIPE).stdout.decode()

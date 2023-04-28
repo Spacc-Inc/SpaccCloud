@@ -47,6 +47,17 @@ If your spacc decryption key falls into a hole? Your problem lmaooo, back it up 
 We don't support the ANTANI protocol :(
 '''
 
+Strings = {
+	"UsernameRequirements": """
+* Max length: 31 chars
+* Allowed chars:
+  * Letters
+  * Underscore (_)
+  * Numbers (not as the first char)
+  * Dash (-) (not as the first char)
+	"""
+}
+
 @App.route('/')
 @App.route('/app')
 @App.route('/app/')
@@ -78,15 +89,16 @@ def Api():
 	else: return JsonRes(Code=400)
 
 def ApiOpenSession(Data:dict):
-	User = Data['Username'][:31].lower()
+	User = FormatUsername(Data['Username'])
 	Passwd = Data['Password']
 	if User in Db['Users'] and bcrypt.checkpw(
 			Passwd.encode(),
 			Db['Users'][User]['Password'].encode()):
-		KeyEnc = Db['Users'][User]['StorageKey']
-		KeyEnc = AesCrypt(KeyEnc[0], Passwd[60-32:], Nonce=KeyEnc[1], StrEnc=True)
+		KeyDec = Db['Users'][User]['Storage']['Key']
+		KeyDec = AesCrypt(KeyDec[0], Passwd[60-32:], Nonce=KeyDec[1], StrEnc=True, StrDec=False)[0].decode()
 		Token = MakeToken(User)
 		SessionStore(Token, User)
+		#CryptMount({"User": User, "passphrase_passwd": KeyDec, "ecryptfs_sig": ""})
 		return JsonRes({"Token": Token})
 	else:
 		return JsonRes({"Notice": "Incorrect login data. Recheck it and retry."}, Code=401)
@@ -113,17 +125,19 @@ def ApiRenewSession(Data:dict):
 		return JsonRes(Code=400)
 
 def ApiRegister(Data:dict):
-	User = Data['Username'][:31].lower()
+	User = FormatUsername(Data['Username'])
 	if not IsUsernameValid(User):
-		return JsonRes({"Notice": "Invalid username. Please respect the regex ([a-z_][a-z0-9_-]0,30})."}, Code=422)
+		return JsonRes({"Notice": f"Invalid username. Please respect the UNIX regex ([a-z_][a-z0-9_-]{{0,30}}): {Strings['UsernameRequirements']}"}, Code=422)
 	if not User in Db['Users']:
 		Passwd = Data['Password']
 		PwHashed = bcrypt.hashpw(Passwd.encode(), bcrypt.gensalt(10)).decode()
-		KeyEnc = AesCrypt(token_urlsafe(128), Passwd[60-32:], StrEnc=True)
-		Db['Users'].update({User: {"Password": PwHashed, "StorageKey": KeyEnc}})
-		# TODO: Create cloud user directories
+		PwEnc = token_urlsafe(64)[:63] # Max len for ecryptfs password is 64 chars
+		KeyEnc = AesCrypt(PwEnc, Passwd[60-32:], StrEnc=True)
+		# Create cloud user directories
 		for Sub in ('Public', 'Secret', 'Secret.Crypto'):
 			os.makedirs(f"{Db['Server']['StorageBase'].removesuffix('/')}/{User}/{Sub}", exist_ok=True)
+		Sig = CmdRun('yes "" | ' + CryptMountCmd({"User": User, "passphrase_passwd": PwEnc}) + '| grep ecryptfs_sig').strip().split('=')[1]
+		Db['Users'].update({User: {"Password": PwHashed, "Storage": {"Key": KeyEnc, "Sig": Sig}}})
 		Session['Users'].update({User: []})
 		WriteInDbFile({"Users": Db['Users']})
 		#SessionStore(Token, User)
@@ -158,21 +172,22 @@ def SessionClose(Token:str, Rehash:bool=False):
 	except Exception:
 		return None
 
-def CryptMount(InOpts:dict, Mount:bool=True):
+def CryptMountCmd(InOpts:dict, Mount:bool=True):
+	SBase = Db['Server']['StorageBase']
 	if Mount: # As opposed to Umount
 		Opts = {
-			"key": "passphrase", # "passphrase_passwd": "passwd", # "ecryptfs_sig": "0123456789abcdef",
+			"ecryptfs_sig": "", "key": "passphrase", # "passphrase_passwd": "passwd",
 			"ecryptfs_cipher": "aes", "ecryptfs_key_bytes": 16,
 			"ecryptfs_passthrough": "no", "ecryptfs_enable_filename_crypto": "yes",
 		}
 		Opts.update(InOpts)
 		Opts.update({"ecryptfs_fnek_sig": Opts['ecryptfs_sig']})
 		CliOpts = f'-t ecryptfs -o "{MakeStringOpts(Opts)},ecryptfs_unlink_sigs"'
-	return os.system(f'''
+	return f'''
 	{'' if Mount else 'u'}mount \
 	{CliOpts if Mount else ''} \
-	{InOpts['Dir']+'.enc' if Mount else ''} {InOpts['Dir']}.mnt \
-	'''.strip())
+	{(SBase+'/'+InOpts['User']+'/Secret.Crypto') if Mount else ''} {SBase}/{InOpts['User']}/Secret \
+	'''.strip()
 
 # Change password of Wfm admin if it might still be on dangerous default
 def WfmAdminReset():

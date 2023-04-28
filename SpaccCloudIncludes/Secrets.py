@@ -16,7 +16,7 @@ def HashToken(Token:str):
 		if len(Frags) > 1:
 			return f'{Frags[0]}/{sha256(Frags[1].encode()).hexdigest()}'
 
-def AesCrypt(Data, Key, Nonce=None, StrEnc:bool=False):
+def AesCrypt(Data, Key, Nonce=None, StrEnc:bool=False, StrDec:bool=True):
 	Data = SureType(Data, bytes)
 	Key = SureType(Key, bytes)
 	if Nonce:
@@ -31,7 +31,7 @@ def AesCrypt(Data, Key, Nonce=None, StrEnc:bool=False):
 		Crypto = AES.new(Key, AES.MODE_EAX)
 		Data = Crypto.encrypt(Data)
 	Nonce = Crypto.nonce
-	if StrEnc:
+	if StrEnc and StrDec:
 		Data = b85encode(Data).decode()
 		Nonce = b85encode(Nonce).decode()
 	return Data, Nonce

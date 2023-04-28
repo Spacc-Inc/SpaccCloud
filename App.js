@@ -32,7 +32,8 @@ function DoLogin(Signup) {
 	var [Username, Password, Remember] = FormLogin.querySelectorAll('input');
 	[Username, Password, Remember] = [Username.value, Password.value, Remember.checked];
 	if (Username && Password) {
-		Password = dcodeIO.bcrypt.hashSync(Password, '$2a$10$m8O.rNTwFHZmPc1QdlamSO'); // Never change salt
+		// Never change salt, we're rehashing with random salt on the server anyways, this is just double security
+		Password = dcodeIO.bcrypt.hashSync(Password, '$2a$10$m8O.rNTwFHZmPc1QdlamSO');
 		JsonReq({Method: (Signup ? "Register" : "OpenSession"), Username: Username, Password: Password}, function(){
 			if (this.readyState == 4) {
 				var Res = JSON.parse(this.responseText);
